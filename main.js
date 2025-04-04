@@ -1,9 +1,14 @@
-const ethers = require('ethers');
+const { Wallet, JsonRpcProvider, formatEther, parseEther } = require('ethers');
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
+const chalk = require('chalk'); // Gunakan chalk@4
 
 dotenv.config();
+
+const hijau = chalk.green;
+const merahMarun = chalk.hex('#800000');
+const putih = chalk.white;
 
 const CONFIG = {
   rpcUrl: process.env.RPC_URL || 'https://tea-sepolia.g.alchemy.com/public',
@@ -51,11 +56,11 @@ const getRandomAmount = () => {
 
 const initializeWallet = async (privateKey) => {
   try {
-    const provider = new ethers.providers.JsonRpcProvider(CONFIG.rpcUrl);
-    const wallet = new ethers.Wallet(privateKey, provider);
+    const provider = new JsonRpcProvider(CONFIG.rpcUrl);
+    const wallet = new Wallet(privateKey, provider);
     const balance = await provider.getBalance(wallet.address);
     log(`\nWallet: ${wallet.address}`);
-    log(`Balance: ${ethers.utils.formatEther(balance)} TEA`);
+    log(`Balance: ${formatEther(balance)} TEA`);
     return { wallet, provider };
   } catch (error) {
     log(`Error initializing wallet: ${error.message}`);
@@ -63,20 +68,21 @@ const initializeWallet = async (privateKey) => {
   }
 };
 
-const sendTransaction = async (wallet, provider, recipient) => {
+const sendTransaction = async (wallet, provider, recipient, txNumber) => {
   try {
     const amountToSend = getRandomAmount();
-    const amountToSendWei = ethers.utils.parseEther(amountToSend);
+    const amountToSendWei = parseEther(amountToSend);
 
     const balance = await provider.getBalance(wallet.address);
-    const gasPrice = await provider.getGasPrice();
-    const gasLimit = 21000;
-    const gasCost = gasPrice.mul(gasLimit);
-    const totalCost = amountToSendWei.add(gasCost);
+    const feeData = await provider.getFeeData();
+    const gasPrice = feeData.gasPrice;
+    const gasLimit = 21000n;
+    const gasCost = gasPrice * gasLimit;
+    const totalCost = amountToSendWei + gasCost;
 
-    if (balance.lt(totalCost)) {
-      log(`Insufficient balance for ${wallet.address} to ${recipient}. Needed: ${ethers.utils.formatEther(totalCost)} TEA`);
-      return;
+    if (balance < totalCost) {
+      log(`Insufficient balance for ${wallet.address} to ${recipient}. Needed: ${formatEther(totalCost)} TEA`);
+      return false;
     }
 
     const tx = {
@@ -86,19 +92,28 @@ const sendTransaction = async (wallet, provider, recipient) => {
       gasLimit
     };
 
-    log(`Sending ${amountToSend} TEA from ${wallet.address} to ${recipient}...`);
     const transaction = await wallet.sendTransaction(tx);
-    log(`Tx sent! Hash: ${transaction.hash}`);
-    log(`Explorer: https://sepolia.tea.xyz/tx/${transaction.hash}`);
-    const receipt = await transaction.wait(1);
+    const receipt = await transaction.wait();
 
     if (receipt.status === 1) {
-      log(`✅ Confirmed: ${wallet.address} → ${recipient}, Amount: ${amountToSend} TEA`);
+      const explorerLink = `https://sepolia.tea.xyz/tx/${transaction.hash}`;
+
+      console.log(
+        `${hijau('transaksi ke')} ${merahMarun(txNumber)}\n` +
+        `${putih('address')} : ${merahMarun(wallet.address)}\n` +
+        `${putih('tujuan')} : ${merahMarun(recipient)}\n` +
+        `${merahMarun('✅ Confirmed')} : ${hijau(explorerLink)}\n`
+      );
+
+      log(`Confirmed TX ${txNumber}: ${wallet.address} → ${recipient}, Amount: ${amountToSend} TEA`);
+      return true;
     } else {
       log(`❌ Failed transaction from ${wallet.address} to ${recipient}`);
+      return false;
     }
   } catch (error) {
     log(`Error sending from ${wallet.address} to ${recipient}: ${error.message}`);
+    return false;
   }
 };
 
@@ -117,13 +132,23 @@ const startAutoSender = async () => {
 
   const sendToAll = async () => {
     for (const { wallet, provider } of walletProviders) {
+      let txCounter = 1;
+      let successCount = 0;
+
       for (const recipient of recipientAddresses) {
-        await sendTransaction(wallet, provider, recipient);
+        const success = await sendTransaction(wallet, provider, recipient, txCounter);
+        if (success) {
+          txCounter++;
+          successCount++;
+        }
       }
+
+      console.log(`${hijau('transaksi selesai')} ${putih('total transaksi')} ${hijau(successCount)}\n`);
+      log(`Transaksi selesai dari ${wallet.address}, total: ${successCount} transaksi\n`);
     }
   };
 
-  await sendToAll(); // Initial send
+  await sendToAll(); // Initial run
   setInterval(sendToAll, CONFIG.intervalMinutes * 60 * 1000);
 };
 
