@@ -2,12 +2,12 @@ const { Wallet, JsonRpcProvider, formatEther, parseEther } = require('ethers');
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
-const chalk = require('chalk'); // Gunakan chalk@4
+const chalk = require('chalk'); // Gunakan chalk@5 atau lebih baru
 
 dotenv.config();
 
 const hijau = chalk.green;
-const merahMarun = chalk.hex('#800000');
+const merahMarun = chalk.rgb(128, 0, 0);  // Ganti dari chalk.hex('#800000') menjadi chalk.rgb
 const putih = chalk.white;
 
 const CONFIG = {
