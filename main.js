@@ -10,12 +10,13 @@ const hijau = chalk.green;
 const merahMarun = chalk.rgb(128, 0, 0);  // Ganti dari chalk.hex('#800000') menjadi chalk.rgb
 const putih = chalk.white;
 
+// Konfigurasi yang dipindahkan ke dalam main.js
 const CONFIG = {
-  rpcUrl: process.env.RPC_URL || 'https://tea-sepolia.g.alchemy.com/public',
+  rpcUrl: 'https://tea-sepolia.g.alchemy.com/public',  // Nilai default RPC URL
   privateKeys: (process.env.PRIVATE_KEYS || '').split(',').map(k => k.trim()).filter(Boolean),
-  minAmount: '0.001',
-  maxAmount: '0.002',
-  intervalMinutes: parseInt(process.env.INTERVAL_MINUTES) || 1
+  minAmount: '0.001',  // Nilai default minAmount
+  maxAmount: '0.002',  // Nilai default maxAmount
+  intervalMinutes: 1,  // Nilai default intervalMinutes
 };
 
 if (CONFIG.privateKeys.length === 0) {
