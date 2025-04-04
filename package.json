@@ -1,16 +1,25 @@
 {
-  "name": "tea",
+  "name": "evm-auto-transfer",
   "version": "1.0.0",
-  "description": "Automatically sends TEA tokens at regular intervals",
-  "main": "main.js",
+  "description": "Automate EVM transactions on testnets with ease. Configure your network and handle multiple transfers effortlessly using this bot.",
+  "main": "index.js",
   "scripts": {
-    "start": "node autoSender.js",
-    "pm2": "pm2 start pm2-config.json"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js",
+    "target": "node target.js"
   },
-  "author": "Alfian",
+  "keywords": [
+    "automation",
+    "EVM",
+    "testnet",
+    "transactions"
+  ],
+  "author": "Alfian194",
   "license": "MIT",
   "dependencies": {
-    "dotenv": "^16.3.1",
-    "ethers": "^5.7.2"
+    "axios": "^1.7.2",
+    "colors": "^1.4.0",
+    "ethers": "^6.13.1",
+    "readline-sync": "^1.4.10"
   }
 }
