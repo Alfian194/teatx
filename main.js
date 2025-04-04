@@ -1,106 +1,102 @@
-const ethers = require('ethers');
-const fs = require('fs');
-const path = require('path');
-const dotenv = require('dotenv');
+const ethers = require('ethers'); const fs = require('fs'); const path = require('path'); const dotenv = require('dotenv');
 
-// Load environment variables
 dotenv.config();
 
-// Configuration
-const CONFIG = {
-  rpcUrl: process.env.RPC_URL,
-  privateKeys: process.env.PRIVATE_KEYS?.split(',') || [],
-  minAmount: process.env.MIN_AMOUNT || '0.001',
-  maxAmount: process.env.MAX_AMOUNT || '0.002',
-  intervalSeconds: parseInt(process.env.INTERVAL_SECONDS) || 5,
-};
+const CONFIG = { rpcUrl: process.env.RPC_URL || 'https://tea-sepolia.g.alchemy.com/public', privateKeys: process.env.PRIVATE_KEYS?.split(',').map(k => k.trim()) || [], minAmount: process.env.MIN_AMOUNT || '0.001', maxAmount: process.env.MAX_AMOUNT || '0.002', intervalMinutes: parseInt(process.env.INTERVAL_MINUTES) || 1, };
 
-if (CONFIG.privateKeys.length === 0) {
-  console.error('PRIVATE_KEYS harus diisi di .env');
-  process.exit(1);
+if (CONFIG.privateKeys.length === 0) { console.error('Error: PRIVATE_KEYS is required in .env file (comma-separated).'); process.exit(1); }
+
+const addressFilePath = path.join(__dirname, 'address.txt'); const addressDonePath = path.join(__dirname, 'address_done.txt'); if (!fs.existsSync(addressFilePath)) { console.error('Error: address.txt not found!'); process.exit(1); }
+
+const recipientAddresses = fs .readFileSync(addressFilePath, 'utf-8') .split('\n') .map(addr => addr.trim()) .filter(Boolean);
+
+const addressDone = fs.existsSync(addressDonePath) ? fs.readFileSync(addressDonePath, 'utf-8').split('\n').map(a => a.trim()) : [];
+
+const logsDir = path.join(__dirname, 'logs'); if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir);
+
+const logFile = path.join(logsDir, 'autosender.log'); const log = (message) => { const timestamp = new Date().toISOString(); const entry = ${timestamp} - ${message}\n; console.log(message); fs.appendFileSync(logFile, entry); };
+
+const getRandomAmount = () => { const min = parseFloat(CONFIG.minAmount); const max = parseFloat(CONFIG.maxAmount); return (Math.random() * (max - min) + min).toFixed(6); };
+
+const sendTransaction = async (wallet, recipient, stats) => { try { const provider = wallet.provider; const amount = getRandomAmount(); const value = ethers.utils.parseEther(amount); const balance = await provider.getBalance(wallet.address); const gasPrice = await provider.getGasPrice(); const gasLimit = 21000; const gasCost = gasPrice.mul(gasLimit); const totalCost = value.add(gasCost);
+
+if (balance.lt(totalCost)) {
+  log(`[${wallet.address}] Saldo tidak cukup untuk ${recipient}. Dibutuhkan: ${ethers.utils.formatEther(totalCost)} TEA`);
+  stats.failed++;
+  return;
 }
 
-// Read recipients from address.txt
-const addressFilePath = path.join(__dirname, 'address.txt');
-if (!fs.existsSync(addressFilePath)) {
-  console.error('File address.txt tidak ditemukan');
-  process.exit(1);
-}
-const recipients = fs.readFileSync(addressFilePath, 'utf-8')
-  .split('\n')
-  .map(addr => addr.trim())
-  .filter(Boolean);
-
-// Create logs dir
-const logsDir = path.join(__dirname, 'logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir);
-}
-const logFile = path.join(logsDir, 'autosender.log');
-const log = (msg) => {
-  const line = `${new Date().toISOString()} - ${msg}\n`;
-  console.log(msg);
-  fs.appendFileSync(logFile, line);
+const tx = {
+  to: recipient,
+  value,
+  gasPrice,
+  gasLimit,
 };
 
-const getRandomAmount = () => {
-  const min = parseFloat(CONFIG.minAmount);
-  const max = parseFloat(CONFIG.maxAmount);
-  return (Math.random() * (max - min) + min).toFixed(6);
-};
+log(`[${wallet.address}] Mengirim ${amount} TEA ke ${recipient}...`);
+const txResult = await wallet.sendTransaction(tx);
+log(`Tx terkirim! Hash: ${txResult.hash}`);
+log(`Explorer: https://sepolia.tea.xyz/tx/${txResult.hash}`);
+const receipt = await txResult.wait(1);
 
-const provider = new ethers.providers.JsonRpcProvider(CONFIG.rpcUrl);
+if (receipt.status === 1) {
+  stats.success++;
+  log(`✅ Berhasil: ${wallet.address} mengirim ${amount} TEA ke ${recipient}`);
+} else {
+  stats.failed++;
+  log(`❌ Gagal: ${wallet.address} -> ${recipient}`);
+}
 
-// Initialize multiple wallets
-const wallets = CONFIG.privateKeys.map(pk => new ethers.Wallet(pk.trim(), provider));
+} catch (err) { stats.failed++; log(Error saat mengirim ke ${recipient}: ${err.message}); } };
 
-const sendTransaction = async (wallet, recipient) => {
-  try {
-    const amount = getRandomAmount();
-    const amountWei = ethers.utils.parseEther(amount);
-    const balance = await wallet.getBalance();
-    const gasPrice = await provider.getGasPrice();
-    const gasLimit = 21000;
-    const gasCost = gasPrice.mul(gasLimit);
-    const totalCost = amountWei.add(gasCost);
+const startAutoSender = async () => { log('===== TEA Multi-Address Auto Sender Dimulai ====='); log(Jumlah wallet: ${CONFIG.privateKeys.length}); log(Jumlah penerima: ${recipientAddresses.length}); log(Range TEA: ${CONFIG.minAmount} - ${CONFIG.maxAmount}); log(Interval: ${CONFIG.intervalMinutes} menit\n);
 
-    if (balance.lt(totalCost)) {
-      log(`❌ ${wallet.address} saldo tidak cukup untuk kirim ke ${recipient}`);
-      return;
-    }
+const wallets = CONFIG.privateKeys.map((key) => { const provider = new ethers.providers.JsonRpcProvider(CONFIG.rpcUrl); return new ethers.Wallet(key, provider); });
 
-    const tx = {
-      to: recipient,
-      value: amountWei,
-      gasPrice,
-      gasLimit
-    };
+const statsMap = new Map(); for (const wallet of wallets) { statsMap.set(wallet.address, { success: 0, failed: 0 }); }
 
-    log(`🔁 ${wallet.address} mengirim ${amount} TEA ke ${recipient}...`);
-    const sentTx = await wallet.sendTransaction(tx);
-    log(`✅ TX terkirim: https://sepolia.tea.xyz/tx/${sentTx.hash}`);
-  } catch (err) {
-    log(`❌ Error dari ${wallet.address} ke ${recipient}: ${err.message}`);
+const sendAll = async () => { for (let i = 0; i < recipientAddresses.length; i++) { const recipient = recipientAddresses[i];
+
+if (addressDone.includes(recipient)) {
+    log(`Lewati ${recipient} karena sudah selesai.`);
+    continue;
   }
-};
 
-const start = async () => {
-  log('===== Auto Sender Start =====');
-  log(`Jumlah Wallet: ${wallets.length}`);
-  log(`Jumlah Penerima: ${recipients.length}`);
-  log(`Interval: ${CONFIG.intervalSeconds} detik`);
-  log(`Amount: ${CONFIG.minAmount} - ${CONFIG.maxAmount} TEA\n`);
+  log(`\nAddress ${i + 1} (${recipient}) sedang memproses transaksi...`);
 
-  const loop = async () => {
-    for (const wallet of wallets) {
-      for (const recipient of recipients) {
-        await sendTransaction(wallet, recipient);
-      }
+  let allSuccess = true;
+
+  for (const wallet of wallets) {
+    const stats = statsMap.get(wallet.address);
+    const beforeSuccess = stats.success;
+    await sendTransaction(wallet, recipient, stats);
+    const afterSuccess = stats.success;
+
+    if (afterSuccess === beforeSuccess) {
+      allSuccess = false;
     }
-  };
+  }
 
-  await loop(); // run first time
-  setInterval(loop, CONFIG.intervalSeconds * 1000);
+  for (const wallet of wallets) {
+    const stats = statsMap.get(wallet.address);
+    log(`==> ${wallet.address} selesai ${stats.success + stats.failed} transaksi, ${stats.failed} gagal, ${stats.success} sukses`);
+  }
+
+  log(`Transaksi address ${i + 1} telah selesai.`);
+
+  if (allSuccess) {
+    fs.appendFileSync(addressDonePath, recipient + '\n');
+    log(`Address ${recipient} ditandai sebagai selesai.`);
+  } else {
+    log(`Address ${recipient} TIDAK ditandai karena ada transaksi gagal.`);
+  }
+}
+
 };
 
-start();
+await sendAll(); setInterval(sendAll, CONFIG.intervalMinutes * 60 * 1000); };
+
+process.on('uncaughtException', (err) => log(Uncaught Exception: ${err.message})); process.on('unhandledRejection', (reason) => log(Unhandled Rejection: ${reason})); process.on('SIGINT', () => { log('⛔ Dihentikan oleh pengguna.'); process.exit(0); });
+
+startAutoSender();
+
