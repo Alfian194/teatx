@@ -28,7 +28,7 @@ nano .env
 Masukkan private key Anda pada file .env seperti ini
 ```
 
-PRIVATE_KEY= isi dengan private key kalian
+PRIVATE_KEYS=isi dengan private key kalian
 
 ```
 Jalankan aplikasi
@@ -77,7 +77,7 @@ nano .env
 Masukkan private key Anda pada file .env seperti ini
 ```
 
-PRIVATE_KEY= isi dengan private key kalian
+PRIVATE_KEYS=isi dengan private key kalian
 
 ```
 Jalankan aplikasi
